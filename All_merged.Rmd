@@ -1,0 +1,581 @@
+---
+title: "All_merged"
+author: "Ekaterina Golubeva"
+date: '2023-06-11'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+```
+
+
+# MySQlite
+
+# import RSQLite package
+library(RSQLite)
+
+# establish a connection to the SQLite database
+database <- dbConnect(SQLite(), dbname ='C:/Daten/_work_laptop/_Lehre/Vorlesung/Databases and Data Architecture Systems/2023/w07/nobel.sqlite')
+#database <- dbConnect(SQLite(), dbname ='C:/Daten/_work_laptop/_Lehre/Vorlesung/Databases and Data Architecture Systems/2023/w08/solutions/nobel_cleansed.sqlite')
+
+#####solution with table#####
+
+# load winners data
+winners = dbReadTable(database,'winners')
+
+# table(winners$country) counts the countries and give out a table, data.frame creates a kind of list
+list <- data.frame(table(winners$country))
+# order(-list$Freq) gives a list if indexes, index of smallest value first (, '-' makes values negative to switch order)
+# list[2,] gives back second element of list
+list2 <- list[order(-list$Freq), ]
+countries <- list2$Var1
+nprizes <- list2$Freq
+
+rm(list)
+rm(list2)
+
+#####other solution with query#####
+
+statement = paste0("SELECT COUNT(year) as count, country ",
+                   "FROM winners GROUP BY country ",
+                   "ORDER BY count DESC, country LIMIT 10;")
+rs = dbSendQuery(database,statement)
+winners = dbFetch(rs,n=-1)
+
+countries <- winners$country
+nprizes <- winners$count
+
+rm(rs)
+rm(statement)
+
+#####plotting and clean up
+
+# plot
+plot(nprizes[1:10], xaxt = "n",
+     main="Country with most Prizes",
+     xlab="", ylab="# Prizes")
+axis(1,at=1:10,labels=countries[1:10], las=2, cex.axis = 0.6)
+
+# disconnect
+dbDisconnect(database)
+
+# rm
+rm(database)
+rm(winners)
+rm(countries)
+rm(nprizes)
+
+
+# Solution to project : 
+
+# load libraries
+library(RSQLite)
+
+# set working directory
+setwd("C:/Users/voru/ZHAW/Lehre/DDAS/06_Project/Tasks/solutions/p3")
+
+# ============================================================================= F1  
+
+# establish connection to the database
+labDB = dbConnect(SQLite(), dbname="TheLabDB.sqlite")
+
+# ============================================================================= F2 
+
+# get required data
+query = paste0("SELECT duration, exp_class,birth_date, graduation_year ",
+               "FROM experiments "                    ,
+               "LEFT JOIN scientists ON scientist_id=scientists.id ")
+result = dbSendQuery(labDB, query)
+data = dbFetch(result, n = -1)
+#dbClearResult(result)
+
+# get duration in seconds
+duration = strsplit(data$duration, split=':', fixed=TRUE)
+i = 1
+for(time in duration){
+  duration[i] = as.integer(time[1])*3600 + 
+                as.integer(time[2])*60   + 
+                as.integer(time[3])
+  i=i+1
+}
+duration = unlist(duration)
+
+# get birth_date as single number
+dob = strsplit(data$birth_date, split='.', fixed=TRUE)
+i = 1
+for(date in dob){
+  dob[i] = as.integer(paste0(date[3],date[2],date[1]))
+  i=i+1
+}
+dob = unlist(dob)
+
+# Correlation: Duration vs Class
+pearson = cor.test(duration,data$exp_class,method='pearson')
+print(paste("Duration vs Class:",
+            round(pearson$estimate[['cor']],digits=5),
+            round(pearson$p.value,digits=2)))
+
+# Correlation: Duration vs Age
+pearson = cor.test(duration,dob,method='pearson')
+print(paste("Duration vs Age:",
+            round(-pearson$estimate[['cor']],digits=5),
+            round(pearson$p.value,digits=2)))
+
+# Correlation: Duration vs Graduation Year
+pearson = cor.test(duration,data$graduation_year,method='pearson')
+print(paste("Duration vs Graduation:",
+            round(pearson$estimate[['cor']],digits=5),
+            round(pearson$p.value,digits=2)))
+
+
+# ============================================================================= F3 
+
+# get required data
+query = "SELECT date, exp_class, success FROM experiments"
+result = dbSendQuery(labDB, query)
+data = dbFetch(result, n = -1)
+dbClearResult(result)
+
+# get month
+date = strsplit(data$date, split='-', fixed=TRUE)
+i = 1
+for(d in date){
+  date[i] = as.integer(d[2])
+  i=i+1
+}
+month = unlist(date)# Correlation: Success vs Class
+spearman = cor.test(data$success,data$exp_class,method='spearman')
+print(paste("Success vs Class:",
+            round(spearman$estimate[['rho']],digits=5),
+            round(spearman$p.value,digits=2)))
+
+# Correlation: Success vs Duration
+spearman = cor.test(data$success,duration,method='spearman')
+print(paste("Success vs Duration:",
+            round(spearman$estimate[['rho']],digits=5),
+            round(spearman$p.value,digits=2)))
+
+# Correlation: Success vs Month
+spearman = cor.test(data$success,month,method='spearman')
+print(paste("Success vs Month:",
+            round(spearman$estimate[['rho']],digits=5),
+            round(spearman$p.value,digits=2)))
+
+
+# ============================================================================= F4 
+
+# get required data
+query = paste0("SELECT duration, exp_class, success, name ",
+               "FROM experiments "                    ,
+               "LEFT JOIN scientists ON scientist_id=scientists.id ",
+               "LEFT JOIN op_units ON op_unit_id=op_units.id ")
+result = dbSendQuery(labDB, query)
+data = dbFetch(result, n = -1)
+dbClearResult(result)
+
+# update duration
+data$duration <- duration
+
+# do it for op_unit "Alpha"
+all = nrow(subset(data, name=='Alpha' & exp_class==1))
+suc = nrow(subset(data, name=='Alpha' & exp_class==1 & success==1))
+dur = mean(subset(data, name=='Alpha' & exp_class==1)$duration)
+print(paste("Alpha | class 1:",all,round(suc/all*100,digits=2),round(dur,digits=2), round(dur/60,digits=2)))
+all = nrow(subset(data, name=='Alpha' & exp_class==2))
+suc = nrow(subset(data, name=='Alpha' & exp_class==2 & success==1))
+dur = mean(subset(data, name=='Alpha' & exp_class==2)$duration)
+print(paste("Alpha | class 2:",all,round(suc/all*100,digits=2),round(dur,digits=2), round(dur/60,digits=2)))
+all = nrow(subset(data, name=='Alpha' & exp_class==3))
+suc = nrow(subset(data, name=='Alpha' & exp_class==3 & success==1))
+dur = mean(subset(data, name=='Alpha' & exp_class==3)$duration)
+print(paste("Alpha | class 3:",all,round(suc/all*100,digits=2),round(dur,digits=2), round(dur/60,digits=2)))
+
+# do it for op_unit "Beta"
+all = nrow(subset(data, name=='Beta' & exp_class==1))
+suc = nrow(subset(data, name=='Beta' & exp_class==1 & success==1))
+dur = mean(subset(data, name=='Beta' & exp_class==1)$duration)
+print(paste("Beta | class 1:",all,round(suc/all*100,digits=2),round(dur,digits=2)))
+all = nrow(subset(data, name=='Beta' & exp_class==2))
+suc = nrow(subset(data, name=='Beta' & exp_class==2 & success==1))
+dur = mean(subset(data, name=='Beta' & exp_class==2)$duration)
+print(paste("Beta | class 2:",all,round(suc/all*100,digits=2),round(dur,digits=2)))
+all = nrow(subset(data, name=='Beta' & exp_class==3))
+suc = nrow(subset(data, name=='Beta' & exp_class==3 & success==1))
+dur = mean(subset(data, name=='Beta' & exp_class==3)$duration)
+print(paste("Beta | class 3:",all,round(suc/all*100,digits=2),round(dur,digits=2)))
+
+# do it for op_unit "Gamma"
+all = nrow(subset(data, name=='Gamma' & exp_class==1))
+suc = nrow(subset(data, name=='Gamma' & exp_class==1 & success==1))
+dur = mean(subset(data, name=='Gamma' & exp_class==1)$duration)
+print(paste("Gamma | class 1:",all,round(suc/all*100,digits=2),round(dur,digits=2)))
+all = nrow(subset(data, name=='Gamma' & exp_class==2))
+suc = nrow(subset(data, name=='Gamma' & exp_class==2 & success==1))
+dur = mean(subset(data, name=='Gamma' & exp_class==2)$duration)
+print(paste("Gamma | class 2:",all,round(suc/all*100,digits=2),round(dur,digits=2)))
+all = nrow(subset(data, name=='Gamma' & exp_class==3))
+suc = nrow(subset(data, name=='Gamma' & exp_class==3 & success==1))
+dur = mean(subset(data, name=='Gamma' & exp_class==3)$duration)
+print(paste("Gamma | class 3:",all,round(suc/all*100,digits=2),round(dur,digits=2)))
+
+
+# ============================================================================= F5 
+
+# get required data
+query = paste0("SELECT chem_name ",
+               "FROM exp_chem "                    ,
+               "LEFT JOIN experiments ON exp_id=experiments.id ",
+               "WHERE success = 0 ")
+result = dbSendQuery(labDB, query)
+data = dbFetch(result, n = -1)
+dbClearResult(result)
+
+# tabalize chemical names
+chems <- table(data$chem_name)
+chems <- sort(chems,decreasing=TRUE)
+print(paste("Chemicals:",names(chems)[1],names(chems)[2],names(chems)[3]))
+
+
+
+
+# MySQL 
+
+#========================================================================
+# Connect to the database
+#========================================================================
+
+# import RMySQL package
+library(RMySQL)
+
+# establish a connection to the MySQL database
+database <- dbConnect(MySQL(),
+                      user = 'root',
+                      password = 'mysqladmin',
+                      host = 'localhost',
+                      dbname ='employees')
+
+
+#========================================================================
+# Task 1: Salary Distribution
+#========================================================================
+
+###############solution1##############
+
+# get all salaries
+salaries = dbReadTable(database, "salaries")
+
+# only use highest salary per employee
+values = aggregate(salaries$salary, by = list(salaries$emp_no), max)
+
+##############solution2##############
+
+statement = paste0("SELECT emp_no, max(salary) as x ",
+                   "FROM salaries ",
+                   "GROUP BY emp_no;")
+rs = dbSendQuery(database, statement)
+values = dbFetch(rs, n=-1)
+
+rm(rs)
+rm(statement)
+
+##############histogram###############
+
+# plot histogram
+hist(values$x, 
+     main="Histogram for Salaries", 
+     xlab="Salaries",
+     border="blue", 
+     col="green",
+     breaks=50)
+
+# free some memory
+rm(salaries)
+rm(values)
+
+
+#========================================================================
+# Task 2: Salary vs Gender
+#========================================================================
+
+#########Solution1#######################
+
+# here I use a JOINT query
+statement = paste0("SELECT salaries.emp_no, salaries.salary, employees.gender ",
+                   "FROM salaries ",
+                   "INNER JOIN employees ON salaries.emp_no = employees.emp_no;")
+rs = dbSendQuery(database,statement)
+salaries = dbFetch(rs,n=-1)
+
+# only use highest salary per employee
+max_salaries = aggregate(salaries, by = list(salaries$emp_no), max)
+
+# get mean and standard deviation by gender
+values = aggregate(max_salaries$salary, by = list(max_salaries$gender),
+                   FUN = function(x) c(mn = mean(x), sd = sd(x)))
+# get only mean and sd in two steps instead
+#mean_values = aggregate(max_salaries$salary, by = list(max_salaries$gender), FUN = mean)
+#std_values = aggregate(max_salaries$salary, by = list(max_salaries$gender), FUN = sd)
+
+
+paste('M:','mean =', values$x[2,'mn'], ' std =', values$x[2,'sd'])
+paste('F:','mean =', values$x[1,1], ' std =', values$x[1,2])
+
+rm(salaries)
+rm(max_salaries)
+
+#########Solution2#######################
+
+# here I use a JOINT query
+statement = paste0("SELECT salaries.emp_no, MAX(salaries.salary) AS salary, employees.gender ",
+                   "FROM salaries ",
+                   "INNER JOIN employees ON salaries.emp_no = employees.emp_no ",
+                   "GROUP BY salaries.emp_no, employees.gender;")
+rs = dbSendQuery(database,statement)
+max_salaries = dbFetch(rs,n=-1)
+
+# get mean and standard deviation by gender
+values = aggregate(max_salaries$salary, by = list(max_salaries$gender),
+                   FUN = function(x) c(mn = mean(x), sd = sd(x)))
+
+paste('M:','mean =', values$x[2,1], ' std =', values$x[2,2])
+paste('F:','mean =', values$x[1,1], ' std =', values$x[1,2])
+
+rm(max_salaries)
+
+#########Solution3#######################
+
+# here I use a JOINT query
+statement = paste0("SELECT max_saleries.gender, AVG(max_saleries.max_salery) as avg, STDDEV(max_saleries.max_salery) AS std FROM ",
+                   "(SELECT salaries.emp_no, max(salaries.salary) AS max_salery, employees.gender ",
+                   "FROM salaries ",
+                   "INNER JOIN employees ON salaries.emp_no = employees.emp_no ",
+                   "GROUP BY salaries.emp_no, employees.gender) ",
+                   "AS max_saleries ",
+                   "GROUP BY max_saleries.gender;")
+rs = dbSendQuery(database,statement)
+values = dbFetch(rs,n=-1)
+
+paste('M:','mean =', values$avg[1], ' std =', values$std[1])
+paste('F:','mean =', values$avg[2], ' std =', values$std[2])
+
+##########clean up####################
+
+# free some memory
+rm(values)
+rm(statement)
+rm(rs)
+
+#========================================================================
+# Task 3: Salary vs Age
+#========================================================================
+
+#########Solution1#######################
+
+# here I use a JOINT query
+statement = paste0("SELECT salaries.emp_no, salaries.salary, employees.birth_date ",
+                   "FROM salaries ",
+                   "INNER JOIN employees ON salaries.emp_no = employees.emp_no;")
+rs = dbSendQuery(database,statement)
+salaries = dbFetch(rs,n=-1)
+
+# only use highest salary per employee
+max_salaries = aggregate(salaries, by = list(salaries$emp_no), max)
+
+# get random sub sample of 1000
+index_list = sample(nrow(max_salaries), 1000)
+values = max_salaries[index_list, ]
+
+#########Solution2#######################
+
+statement = paste0("SELECT salaries.emp_no, max(salaries.salary) AS salary, employees.birth_date ",
+                   "FROM salaries ",
+                   "INNER JOIN employees ON salaries.emp_no = employees.emp_no ", 
+                   "GROUP BY salaries.emp_no, employees.birth_date ORDER BY RAND() LIMIT 1000")
+rs = dbSendQuery(database,statement)
+values = dbFetch(rs,n=-1)
+
+
+#########plot and clean up#######################
+# convert string vector to date vector
+birth_dates = as.Date(values$birth_date)
+# scatter plot
+plot(birth_dates,values$salary,
+     main="Salary vs Age",
+     xlab="Date of Birth", ylab="Salary")
+
+# free some memory
+rm(salaries)
+rm(max_salaries)
+rm(values)
+rm(statement)
+rm(rs)
+
+#========================================================================
+# Disconnect
+#========================================================================
+dbDisconnect(database)
+rm(database)
+
+
+
+# Task 3 
+# Ekaterina Golubeva 
+
+#========================================================================
+# F1: Connection
+#========================================================================
+
+library(RSQLite)
+library(ggplot2)
+library(dplyr)
+library(hms)
+options(warn=-1)
+
+database = dbConnect(SQLite(), dbname ='TheLabDB.sqlite')
+
+#========================================================================
+# F2: Correlation with Duration
+#========================================================================
+
+query = paste0("SELECT experiments.duration, experiments.date, experiments.success, experiments.exp_class, scientists.birth_date, scientists.graduation_year FROM experiments 
+               INNER JOIN scientists ON scientists.id = experiments.scientist_id;")
+result = dbSendQuery(database,query)
+data = dbFetch(result,n=-1)
+head(data)
+
+# convert each column to numeric format
+
+data$duration <- hms(data$duration)
+data$duration <- as.numeric(data$duration) 
+
+data$exp_class = as.numeric(data$exp_class)
+
+#data$graduation_year = as.numeric(data$graduation_year)
+
+data$graduation_year <- as.Date(as.character(data$graduation_year), format = "%Y") # is now class 'Date'
+data$graduation_year <- year(data$graduation_year)
+
+data$birth_date = as.Date(data$birth_date, format = "%d.%m.%Y")
+current_year <- as.numeric(format(Sys.Date(), "%Y"))
+birth_year <- as.numeric(format(data$birth_date, "%Y"))
+data$age <- as.numeric(current_year - birth_year)
+
+corr_dur_exp= cor.test(data$duration, data$exp_class, method = 'pearson')
+corr_dur_age= cor.test(data$duration, data$age, method = 'pearson')
+corr_dur_grad= cor.test(data$duration, data$graduation_year, method = 'pearson')
+
+# Print out results
+cat("Pearson's correlation between duration and experiment class: r =", corr_dur_exp$estimate, ", p-value =", corr_dur_exp$p.value, "\n")
+cat("Pearson's correlation between duration and age of performing scientist: r =", corr_dur_exp$estimate, ", p-value =", corr_dur_age$p.value, "\n")
+cat("Pearson's correlation between duration and graduation year of performing scientist: r =", corr_dur_grad$estimate, ", p-value =", corr_dur_grad$p.value, "\n")
+
+
+#========================================================================
+# F3: Correlation with Success
+#========================================================================
+
+# Convert date column to character string in format "YYYY-MM"
+data$month <- format(data$date, format = "%Y-%m-%d")
+
+# Extract month from character string
+data$month <- substr(data$month, start = 6, stop = 7)
+data$month = as.numeric(data$month)
+
+# Compute correlation and p-value for experiment class
+cor_class <- cor.test(data$success, data$exp_class, method = "spearman")
+# Compute correlation and p-value for experiment duration
+cor_duration <- cor.test(data$duration, data$exp_class, method = "spearman")
+# Compute correlation and p-value for month of experiment date
+cor_month <- cor.test(data$success, data$month, method = "spearman")
+
+# Print out results
+cat("Spearman's correlation between success and experiment class: r =", cor_class$estimate, ", p-value =", cor_class$p.value, "\n")
+cat("Spearman's correlation between success and duration: r =", cor_duration$estimate, ", p-value =", cor_duration$p.value, "\n")
+cat("Spearman's correlation between success and month of experiment date: r =", cor_month$estimate, ", p-value =", cor_month$p.value, "\n")
+
+
+#========================================================================
+# F4: Performance
+#========================================================================
+
+query = paste0("SELECT experiments.id, experiments.duration, experiments.exp_class, experiments.success, op_units.name ",
+                   "FROM experiments ",
+                   "INNER JOIN scientists ON scientists.id = experiments.scientist_id ",
+                   "INNER JOIN op_units on op_units.id = scientists.op_unit_id;")
+result = dbSendQuery(database,query)
+res = dbFetch(result,n=-1)
+data$opunit = res$name
+View(data)
+
+# Number of performed experiments per unit and experiment class
+num_experiments <- data %>% 
+  group_by(exp_class, opunit) %>%
+  summarise(number = n())
+print(num_experiments)
+
+# Plotting the results
+ggplot(num_experiments, aes(x = opunit, y=number))+
+  xlab("Names of Operational Units per Experiment Class")+
+  ylab("# Experiments")+
+  geom_boxplot()+
+  facet_grid(~exp_class)+ theme_light()
+
+
+# Success rate per unit and experiment class
+success_per_expClass <- data %>%
+  group_by(opunit, exp_class) %>%
+  summarise(success = n()) %>%
+  mutate(total_success = sum(success),
+         percent_success = round(success/total_success*100, 0)) %>%
+  select(-total_success)
+print(success_per_expClass)
+
+# Plot the results
+ggplot(success_per_expClass, aes(x = opunit, y=percent_success))+
+  xlab("Names of Operational Units per Experiment Class")+
+  ylab("Succes rate [%]")+
+  geom_boxplot()+
+  facet_grid(~exp_class)+ theme_light()
+
+
+# Average experiment duration per unit and experiment class
+avg_duration <- data %>% 
+  group_by(exp_class, opunit) %>%
+  summarise(mean_duration = mean(duration))
+print(avg_duration)
+
+# Plot the results
+ggplot(avg_duration, aes(x = opunit, y=mean_duration))+
+  xlab("Names of Operational Units per Experiment Class")+
+  ylab("Average duration [s]") +
+  geom_boxplot()+
+  facet_grid(~exp_class)
+
+
+#========================================================================
+# F5: Chemicals
+#========================================================================
+
+query = paste0("SELECT exp_chem.chem_name, experiments.success ",
+                   "FROM experiments ",
+                   "INNER JOIN exp_chem ON exp_chem.exp_id = experiments.id ",
+                   "WHERE experiments.success == 0 ;")
+failed_exp = dbSendQuery(database,query)
+failed_data = dbFetch(failed_exp,n=-1)
+head(failed_data)
+
+# Count the number of failed experiments for each chemical
+chemical_counts <- table(failed_data$chem_name)
+
+# Get the names of the top three chemicals with the most failed experiments
+top_chemicals <- names(head(sort(chemical_counts, decreasing = TRUE), 3))
+cat("The 3 chemicals that are most often associated with failed experiments are", top_chemicals, "\n")
+
+
+#========================================================================
+# Disconnect
+#========================================================================
+dbDisconnect(database)
+rm(database)
